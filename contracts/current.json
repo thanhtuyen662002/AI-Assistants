@@ -1,0 +1,1 @@
+{"schema_version":"1.0","event":"contracts/normalized-event.v2.schema.json","agent_decision":"contracts/agent-decision.v1.schema.json","wiki_candidate":"contracts/wiki-page.v1.schema.json","deprecated":["contracts/normalized-event.v1.schema.json"],"note":"Schemas validate shape only. Server authorization, provenance semantics and release publication require implementation."}

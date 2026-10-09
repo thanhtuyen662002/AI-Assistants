@@ -1,4 +1,4 @@
-# Secrets, private chat and business data
+# Secrets / personal sessions / private source and customer material
 .env
 .env.*
 !.env.example
@@ -6,21 +6,23 @@ secrets/
 private-data/
 customer-data/
 transcripts/
+sessions/
+.session/
+qr-codes/
+bridge-spool/
+brain-workspaces/
+brain-private/
 *.pem
 *.key
-
-# Personal Zalo authentication and bridge state (not sufficient alone: scan commits).
-zalo-sessions/
-.zalo/
-bridge-spool/
 cookies.json
-cookie.json
 session.json
-qr.png
-qrcode.png
-login-qr.*
+*.mp4
+*.mov
+*.mkv
+*.wav
+*.mp3
 
-# Dependencies, generated output and local tooling
+# Dependencies / generated output
 node_modules/
 .pnpm-store/
 .next/
@@ -30,13 +32,16 @@ coverage/
 playwright-report/
 test-results/
 .turbo/
+
+# Local infrastructure / diagnostic output
 .data/
 volumes/
 *.log
 *.sqlite
+*.sqlite3
 .DS_Store
 __pycache__/
 *.pyc
 .venv/
 
-# Fixtures must be synthetic/reviewed; no QR screenshots or raw provider exports.
+# examples/brain-demo is deliberately versioned SYNTHETIC data, not a real vault.
