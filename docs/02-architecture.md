@@ -1,103 +1,70 @@
-# 02 — Kiến trúc triển khai
+# 02 — Kiến trúc: personal bridge + shared second brain
 
-## 1. Quyết định mặc định
+## Stack và ranh giới
 
-Chọn **modular monolith + background worker**, không microservices từ đầu. Một ngôn ngữ TypeScript để các coding agent dùng chung schema và giảm sai lệch interface. Next.js cho console; Fastify cho REST/webhook; worker Node.js; PostgreSQL làm nguồn dữ liệu chuẩn, pgvector cho embedding; Redis + BullMQ cho job/lock hỗ trợ; object storage tương thích S3 cho tài liệu. Đây là lựa chọn đề xuất, chưa cài đặt.
+Modular monolith + background workers bằng TypeScript; Next.js console, Fastify API, PostgreSQL + pgvector, Redis + BullMQ, S3-compatible storage. Thêm **apps/zalo-bridge** là process Node.js/container thường trực cho session/listener cá nhân. Không đặt listener trong request handler, browser console người vận hành hoặc short-lived serverless function. Chưa cài stack; SB-02 pin supported versions, lockfile và compatibility tests.
 
-SB-02 kiểm tra phiên bản đang được hỗ trợ của Node/package/framework/DB/vector extension, pin Docker image và lockfile. Dùng thư viện hiện hành sau compatibility spike, không dùng WhatsApp SDK đã archived [S10 trong 00]. Model sau adapter `LLMProvider`; chọn model bằng eval tiếng Việt, structured output, độ trễ, xử lý dữ liệu và chi phí. Không gắn runtime với tên model hoặc API version đoán từ trí nhớ.
-
-## 2. Sơ đồ
-
-```mermaid
-flowchart TD
-  Z[Zalo OA] --> W[Webhook API / raw signature verification]
-  A[WhatsApp Cloud API] --> W
-  W --> I[(PostgreSQL inbox + normalized events)]
-  I --> D[Dispatcher / replay]
-  D --> Q[Queue jobs by conversation]
-  Q --> R[Workflow agent runtime]
-  R --> ID[Identity / authorization / handoff]
-  R --> K[Knowledge + customer memory retrieval]
-  K --> P[(Postgres + pgvector)]
-  R --> T[Tool gateway / CRM adapters]
-  R --> G[Output validator + action policy]
-  G --> O[(Transactional outbox)]
-  O --> S[Sender: recheck state, window, consent, budget]
-  S --> Z
-  S --> A
-  C[Operator console] --> H[Human takeover / approvals / KB review]
-  H --> I
-  H --> P
-  H --> O
-  U[Document upload] --> X[Quarantine / extraction / versioning]
-  X --> P
-```
-
-## 3. Cấu trúc code cần tạo
+Ứng viên transport `zca-js` được đánh giá ở SB-27 (nguồn P1–P3 trong docs/10). Một account/một active bridge listener bằng DB lease + fencing epoch; standby không tự login khi không sở hữu lease. Runtime/console/LLM không cầm personal session. Không dùng cookie extraction extension làm quy trình onboarding mặc định.
 
 ```text
-apps/
-  api/                  # webhooks, authenticated REST, health
-  worker/               # dispatcher, agent runs, ingest, sender, purge
-  console/              # inbox, customers, knowledge, approvals, settings
-packages/
-  contracts/            # JSON Schema + generated TS + OpenAPI
-  db/                   # migrations, tenant-scoped repositories
-  auth/                 # operator RBAC, server-side scope derivation
-  channels/             # zalo, whatsapp, mock, policy evaluator
-  identity/             # customer mapping / link / verification
-  knowledge/            # ingest, chunk, hybrid retrieve, source validation
-  memory/               # extraction, lifecycle, privacy, consolidation
-  agent-runtime/        # finite workflow, prompt/version, budgets
-  tools/                # CRM/order/ticket adapters, approval gateway
-  observability/        # traces, metrics, redaction
-infra/                  # compose, deployment templates, runbooks
-contracts/              # design schemas supplied in planning baseline
-planning/               # backlog DAG
-prompts/                # runtime prompt versions after implementation
- evals/                  # synthetic + access-controlled evaluation sets
+Zalo cá nhân → bridge listener → allowlisted CSKH filter
+                                 ↓ encrypted bounded local spool
+                                 ↓ authenticated internal ingest
+WhatsApp → raw signature verified webhook
+                                 ↓
+                         durable DB inbox
+                                 ↓ dispatcher/sweeper
+                         queue by conversation
+                                 ↓
+                 auth/identity/handoff → agent workflow
+                    KB + private memory + live tools
+                                 ↓ validated decision
+                       transactional outbox
+                         ↙                ↘
+                bridge command        WhatsApp sender
+                session/fence         policy/template
+                         ↘                ↙
+                      accepted / delivered / unknown
 ```
 
-Root `contracts/` là nguồn thiết kế; SB-03 đưa vào build/codegen có một nguồn sự thật, không duy trì hai bộ schema độc lập. Đường dẫn `evals/` ở root (bỏ khoảng thụt trong minh họa).
+## Code layout cần tạo
 
-## 4. Inbound: nhận nhanh nhưng không mất tin
+`apps/api`, `apps/worker`, `apps/console`, `apps/zalo-bridge`; `packages/contracts`, `db`, `auth`, `channels/zalo-personal`, `channels/whatsapp`, `channels/mock`, `identity`, `knowledge`, `memory`, `agent-runtime`, `tools`, `observability`; `infra`, `prompts`, `evals`, `tests`. Root contracts là design source, SB-03 chốt codegen một nguồn sự thật. Event hiện hành v2; không map lại enum zalo v1 thành personal.
 
-1. Route chỉ đến đúng channel binding đã đăng ký; đọc raw bytes có giới hạn kích thước.
-2. Xác minh chữ ký bằng secret của binding/app; kiểm tra account nhận và schema. Payload không đáng tin không được tự chọn tenant.
-3. Transaction lưu raw event đã mã hóa hoặc reference tối thiểu, inbox receipt, các normalized event và cursor cần dispatch. Dedup theo khóa provider phù hợp; event receipt không đồng nghĩa đã xử lý.
-4. Chỉ ACK thành công sau commit. DB lỗi trả lỗi thích hợp để provider retry; không gọi LLM trong HTTP webhook.
-5. Dispatcher lấy pending rows có lease bằng DB transaction, enqueue job ID ổn định; job cũng idempotent. Sweeper tìm inbox đã ACK nhưng chưa có job nếu queue/Redis lỗi.
-6. Worker serialize theo `(tenant_id, channel_binding_id, external_user_id)`/conversation. DB optimistic version là nguồn kiểm soát; Redis lock không là bảo đảm duy nhất.
-7. Lưu provider timestamp và thời điểm nhận riêng; không lùi `last_eligible_interaction_at` do event đến trễ. Tin đến cùng lúc có debounce ngắn cấu hình được, không làm mất ý định yêu cầu gặp người.
+## Ingress: hai cơ chế khác nhau
 
-## 5. Workflow runtime
+**WhatsApp:** đọc raw body/limit → validate signature/account binding → normalized v2 → commit receipt/events/dispatch cursor → ACK provider. DB lỗi không ACK thành công; không gọi LLM trong webhook. Normalize mọi message/status, không chỉ entry đầu.
 
-`RECEIVE → CHECK_SCOPE_AND_HANDOFF → CLASSIFY → RETRIEVE → PLAN → OPTIONAL_TOOL → DRAFT → VALIDATE → ENQUEUE_REPLY → MEMORY_CANDIDATES`.
+**Zalo personal:** bridge nhận event từ authenticated account session, lọc 1:1/thread allowlist trước persist. Chuẩn hóa tối thiểu, bỏ raw credentials/private fields; ghi encrypted local spool có cap/retention. Gửi event đến private ingest bằng mTLS hoặc service HMAC có raw bytes, timestamp, nonce, body hash, credential/binding allowlist và fencing epoch. Server derive tenant từ credential registry, không tin payload tenant. Durable DB commit trước internal ACK; bridge chỉ xóa spool entry đã ACK. Internal signature là của bridge, **không phải chữ ký provider Zalo**.
 
-Mỗi bước có trạng thái persisted, timeout, retry policy và budget. Bước tool không lặp vô hạn: mục tiêu ban đầu tối đa 3 tool calls, 2 lần soạn/chỉnh, 1 model fallback được cho phép xử lý dữ liệu cùng cấp. Vượt ngân sách/timeout chuyển người, không tự tăng limit.
+Không có provider ACK/retry giống OA để mặc định dựa vào. Spool chỉ bảo vệ từ khi event đã tới bridge và được lưu bền; crash trước persist hoặc listener offline có thể mất sự kiện. Nếu chưa chứng minh replay/history API, ghi khoảng gap, pause auto affected binding và yêu cầu đối soát; không báo đã nhận đủ. Spool đầy/DB unavailable dài → DEGRADED/auto stop, alert không PII; không âm thầm drop rồi báo healthy. Historical replay đánh dấu riêng, cập nhật ngữ cảnh có kiểm soát, không kích hoạt tin trả lời cũ.
 
-Model chỉ đề xuất quyết định JSON theo schema. Authorization, điều kiện gửi, approval và quyền dữ liệu nằm trong code. Classifier bị sai không được làm mất tenant boundary. Tóm tắt dùng để tiết kiệm context; thông tin quan trọng phải kiểm lại nguồn.
+**Chung:** unique event key theo binding + provider message/type/status discriminator; dispatcher lease/sweeper phục hồi gap DB→queue. Worker idempotent và serialize conversation bằng persisted version; Redis lock chỉ bổ sung. Lưu provider_at/received_at riêng, timestamp watermark chỉ tăng. Unsupported/status/self echo không tạo user turn.
 
-## 6. Outbound: atomic intent, không hứa exactly-once
+## Session/control plane
 
-Transaction ghi agent decision + outbox intent + expected conversation ownership version. Sender claim từng row, kiểm tra kill switch, handoff state, opt-out, cửa sổ gửi, template approval, quota và ngân sách **ngay trước dispatch**. Handoff cũng lấy cùng mutex/DB ownership protocol; phải có test race giữa takeover và send. Tin đã bắt đầu gửi đến provider trước takeover có thể không thu hồi được; console hiển thị trạng thái in-flight thay vì cam kết hủy được.
+`DISCONNECTED → QR_PENDING → CONNECTED → DEGRADED | REAUTH_REQUIRED | PAUSED → DISCONNECTED`. QR owner-only có TTL, no-store, không telemetry/screenshot public. Success lưu secret reference/key version, increment session generation; backend không trả cookie. Heartbeat/lease epoch làm fence cả ingest lẫn send. Disconnect dừng listener, thu hồi credential bridge, purge session/QR/spool theo policy, block queued sends. Explicit operator resume mới cho auto; reconnect không tự cấp lại quyền gửi.
 
-Khóa dedup intent gồm tenant, conversation, causal event, loại action và phiên bản reply. `pending → dispatching → accepted → delivered/read` hoặc `failed`, `blocked`, `unknown`. Provider acceptance không đồng nghĩa delivered. Status webhook chỉ tiến trạng thái hợp lệ; trạng thái đến sai thứ tự không lùi delivered thành sent.
+Upstream nêu một web listener/account và việc mở Zalo Web có thể dừng listener [P1]. Vì vậy không thiết kế active-active cùng account; không vòng reconnect để tranh phiên với chủ tài khoản. Test cụ thể mobile/PC/Web ở SB-27; không suy từ library option rằng mọi self message luôn được quan sát.
 
-Timeout khi gửi có thể là provider đã nhận nhưng client chưa biết: đặt `unknown`, đối soát bằng message ID/status nếu có; không retry mù. Nếu provider không có cơ chế tra cứu/idempotency đủ chắc, chuyển review thủ công. Không có bảo đảm exactly-once end-to-end chỉ vì dùng BullMQ/outbox. Worker retry phải idempotent [S14].
+## Agent runtime
 
-## 7. Tách môi trường và trust boundary
+`RECEIVE → SCOPE/HANDOFF → CLASSIFY → RETRIEVE → PLAN → OPTIONAL TOOL → DRAFT → VALIDATE → OUTBOX → MEMORY CANDIDATES`. Mỗi bước có status/timeout/version, tool calls và attempts hữu hạn; default đề xuất 3 tools, 2 draft attempts, 1 approved model fallback. Model là adapter chưa chọn bằng tên cụ thể. Tool failures/source missing → clarify/handoff; không model fallback chưa duyệt xử lý dữ liệu.
 
-Local dùng fixtures synthetic, mock channel, mock CRM, fake LLM; compose DB/Redis/object storage. Staging dùng account sandbox/test và ngân sách thấp; production dùng secret, database, buckets, app binding riêng. Console không cầm OA/Meta token; browser gọi API có operator auth.
+LLM không chọn tenant/customer credentials/role. KB published+ACL+effective version; customer facts riêng; order/price từ live tools. Candidate không auto publish KB. Context budgets và metrics là tuning targets, không chứng minh correctness.
 
-RLS là lớp phòng vệ bổ sung: runtime không dùng owner/superuser/BYPASSRLS; `FORCE ROW LEVEL SECURITY` nơi phù hợp, scoped transaction và composite tenant foreign keys [S12]. Chỉ filter trong UI không đủ. Service migration/admin quyền cao phải tách khỏi request/worker runtime.
+## Outbox và human arbitration
 
-## 8. Quan sát và thất bại
+Persist decision+outbox+expected ownership version trong transaction. Sender recheck OFF/scope/consent/channel eligibility/session health/lease/epoch/account pause/budget/handoff ngay trước dispatch. Bridge cũng kiểm fenced authorized command, không cung cấp send endpoint arbitrary. Approved human reply qua cùng outbox/gates.
 
-Trace đi qua receipt → job → run → retrieval → tool → outbox → provider status bằng ID, không raw PII. Circuit breaker riêng từng provider/tenant để một OA hết quota không làm nghẽn cả hệ thống. Dead-letter queue có reason/replay audit; replay vẫn chạy mọi safety gate.
+States `pending → dispatching → accepted → delivered/read` hoặc `failed/blocked/unknown`. Provider acceptance không delivery. Zalo không có verified receipt capability thì chỉ accepted/unknown; không tự tạo delivered. Timeout sau write → unknown, reconcile nếu có ID/evidence; không retry mù. Không hứa exactly-once end-to-end.
 
-Nếu LLM lỗi: giữ case, thông báo theo policy hoặc tạo handoff. Nếu KB lỗi: không trả từ trí nhớ mô hình. Nếu CRM lỗi: không báo trạng thái đơn cũ là mới. Nếu policy config chưa xác minh: chặn tự gửi và tạo draft. Nếu queue down nhưng DB còn hoạt động: receipt vẫn lưu; dispatcher bù sau, dashboard báo delay.
+`isSelf` event: đối chiếu outbox/provider IDs để nhận echo của hệ thống; self event không map chắc là manual human activity → tăng ownership version/takeover bảo thủ. Không discard toàn bộ self events vì sẽ bỏ lỡ người can thiệp. Nếu ID correlation mơ hồ hoặc self visibility thiếu → pause auto, không đoán. Tin đã in-flight trước takeover có thể không thu hồi được; console ghi rõ.
 
-## 9. ADR ban đầu
+## Security/operations
 
-ADR-001: relational + vector trước, graph/fine-tune sau nếu có đo lường chứng minh cần. ADR-002: một workflow agent thay runtime multi-agent, dễ test và kiểm soát action. ADR-003: channel adapter tách policy, không copy một cửa sổ chung. ADR-004: durable inbox/outbox, chấp nhận at-least-once nội bộ và xử lý outbound unknown rõ ràng. ADR-005: customer memory riêng tư, knowledge dùng chung có duyệt. ADR-006: deployment bằng container portable, chưa mua/provision hạ tầng trong planning baseline.
+Môi trường local mock, controlled account tests và production tách secret/data. Runtime DB role không owner/BYPASSRLS; composite tenant FK/RLS; cached private data có tenant/customer/ACL version. Bridge credential map account/binding, local spool mã hóa và áp deletion tombstone; không gửi personal history về telemetry.
+
+Logs chỉ IDs, versions, reason codes; trace receipt→run→tool→outbox. Circuit breakers theo channel/account; bridge liveness/gap/unknown/account restriction metrics. Kill switch vẫn giữ inbound được phép nếu an toàn. Restore môi trường cô lập với sender tắt, suppression/tombstones trước reconnect. Account banned/challenged không cố vượt; owner dùng quy trình chính thức hoặc manual copilot.
+
+ADR-001 relational+vector; ADR-002 bounded single runtime agent; ADR-003 transport-specific ingress/policy; ADR-004 durable inbox/outbox nhưng no-loss/exactly-once có giới hạn; ADR-005 private customer memory + reviewed KB; ADR-006 container portable; ADR-007 Zalo personal thay OA theo yêu cầu; ADR-008 một fenced listener/account và explicit manual fallback.

@@ -1,63 +1,34 @@
-# Hướng dẫn cho coding agents
+# Hướng dẫn cho coding agents — Zalo cá nhân
 
-## Nhiệm vụ và nguồn sự thật
+## Yêu cầu có hiệu lực
 
-Xây sản phẩm trong README, không chỉ chatbot demo. Đọc theo thứ tự: README → docs/00-source-review.md → docs/01-product-and-scope.md → docs/02-architecture.md → docs/05-data-and-api-contracts.md → docs/06-delivery-plan.md → tài liệu vai trò.
+Chủ dự án xác nhận dùng **Zalo cá nhân**, không phải OA. Đọc README → docs/10-zalo-personal-decision.md → docs/01..09 → planning/backlog.json. Không hỏi lại có phải OA không; không yêu cầu OA ID/App/OA token hoặc xây OA adapter làm MVP. WhatsApp giữ Cloud API như giả định thiết kế, không suy từ câu đính chính Zalo rằng WhatsApp cũng phải dùng cá nhân.
 
-Thứ tự ưu tiên: yêu cầu chủ dự án đã được ghi nhận > yêu cầu an toàn/quy tắc nền tảng đã kiểm chứng > hợp đồng đã duyệt > implementation. Khi mâu thuẫn, mở Decision Record, không tự đoán. Hai clip chưa xem được; tuyệt đối không tự viết transcript hoặc tuyên bố đã làm theo clip.
+Bản sửa này thay giả định OA của commit baseline. Các hard gates dùng chung về tenant/customer, memory, tools, consent, chất lượng vẫn giữ. Hai clip chưa đọc được; SB-00 blocked, không tự tạo transcript. Có mâu thuẫn: yêu cầu chủ dự án đã ghi nhận → safety/platform constraints được kiểm chứng → docs/10 → contracts hiện hành → các module. Ghi ADR, không lặng lẽ đoán.
 
-## Cách nhận và thực hiện task
+## Cách làm
 
-- Một nhánh cho một task: `agent/SB-XX-short-name`; không force-push main và không tự merge PR của mình.
-- Kiểm tra dependency trong `planning/backlog.json`, nhận task ở trạng thái ready; cập nhật owner thực tế/claim qua PR hoặc issue trước khi làm. Vai trò trong plan không phải tài khoản GitHub đã được assign.
-- Dùng mock đúng contract khi upstream đang làm. Không đổi contract để tránh lỗi test; đề xuất thay đổi contract trước, có review của Platform và QA.
-- Bàn giao PR gồm task ID, phạm vi, file thay đổi, lệnh đã chạy + kết quả thật, test mới, ảnh UI nếu có, migration/rollback, rủi ro còn mở. Không ghi DONE khi chỉ có screenshot hoặc test mock cho tích hợp thật.
-- Không cài hoặc nâng package ngoài phạm vi nếu chưa có lý do; pin Node LTS/package manager/dependency, giữ lockfile. Một agent Platform chịu trách nhiệm thay đổi root manifest/lockfile tại một thời điểm.
+Một task/một nhánh `agent/SB-XX-short-name`, một PR có dependency, scope, bằng chứng và rollback. Không force-push main hoặc tự merge PR mình. Claim task qua issue/PR; owner_role trong backlog không phải tài khoản đã assign. Kiểm tra PR/head mới trước sửa. Một agent quản lý root manifest/lockfile tại một thời điểm; pin supported versions sau compatibility check. Thiếu account không chặn mocks nhưng không được gọi mock là integration passed.
 
-## Ranh giới sở hữu đề xuất
+Vai trò: Lead quản lý scope/ADR; Platform contracts/auth/DB/identity/inbox/outbox/handoff; Channels bridge Zalo/WhatsApp/policy; Memory ingest/RAG/facts; Runtime workflow/tools/approval; Console inbox/settings/review; QA eval/security/E2E; Operations toolchain/deploy/secrets/observability/restore. Thay đổi chéo vùng cần review chủ module.
 
-| Vai trò | Vùng chính |
-|---|---|
-| Lead | docs, planning, ADR, dependency, review tổng thể |
-| Platform | packages/contracts, packages/db, packages/auth, identity, migrations |
-| Channels | packages/channels, webhook routes, sender và policy kênh |
-| Memory | packages/knowledge, packages/memory, ingestion/retrieval |
-| Runtime | packages/agent-runtime, packages/tools, workflow và validation |
-| Console | apps/console, UI inbox/knowledge/approval |
-| QA | evals, tests/contracts, tests/security, tests/e2e, báo cáo chất lượng |
-| Operations | infra, CI, deployment, dashboards, backup/restore |
+## Bất biến bắt buộc
 
-Các đường dẫn ứng dụng trên là **cấu trúc cần tạo**, không phải code đã có. Thay đổi chéo module cần review người sở hữu.
+1. Server derive tenant/customer scope từ auth và binding đã đăng ký; không tin field do client, bridge payload hoặc model tự chọn. Runtime DB không owner/superuser/BYPASSRLS. Filter tenant là chưa đủ với memory riêng từng khách.
+2. Zalo Personal Bridge là **unofficial**, ứng viên `zca-js` sau SB-27. Review điều khoản/account risk và dependency trước live login. Không dùng tài khoản thật/scan QR khi chủ sở hữu chưa chủ động cho phép. Chấp nhận rủi ro không tạo quyền vượt giới hạn nền tảng.
+3. Bridge riêng lâu dài, session mã hóa, một active listener/account bằng fencing lease. QR owner-only, TTL ngắn, không log/cache/public screenshot; cookie/session/IMEI/device context không vào LLM/Git. Không lấy credential từ người khác hoặc cài extension trích cookie làm yêu cầu mặc định.
+4. Nhận Zalo từ listener qua authenticated internal ingest, không OA webhook hoặc giả chữ ký Zalo. Chữ ký bridge chứng minh bridge gửi, không chứng minh Zalo ký event. WhatsApp vẫn raw webhook signature và official Cloud API; không WhatsApp Web automation.
+5. Lọc cuộc trò chuyện CSKH 1:1 được cho phép **tại bridge trước persist/LLM**. Không dump danh bạ, nhóm, lịch sử, tin riêng. Thread/user ID được bind tenant+account; không tự merge theo tên/số tự khai.
+6. Durable inbox trước internal ACK; local encrypted bounded spool khi API lỗi; dedup và outbox. Không hứa replay đầy đủ từ Zalo hoặc exactly-once provider. Gap phải được báo; ambiguous send → unknown/reconcile, không retry mù.
+7. Runtime và sender kiểm handoff/ownership version. `isSelf` không tự phân biệt người/bot: đối chiếu outbox/provider IDs; self event không khớp → human takeover bảo thủ. Chưa chứng minh quan sát được mobile/PC self messages thì AUTO bị chặn khi dùng song song ngoài console.
+8. OA 48h/7d, OAuth refresh, OA quota/template không áp cho personal. Không suy ra personal không giới hạn hoặc hoàn toàn miễn phí. Unknown rate/capability không đổi thành 0/allowed. Không né CAPTCHA, challenge, block, giới hạn hoặc anti-bot; không tạo vòng login hay chuyển proxy/tài khoản để né chặn.
+9. Chỉ published KB còn hiệu lực, ACL đúng. Memory candidate có nguồn và lifecycle; KB publish có duyệt. Giá/đơn hàng qua authorized live tool. Tool allowlist, approval gắn args hash, idempotency; không SQL/shell/arbitrary HTTP trong runtime CSKH.
+10. Prompt injection không đổi quyền; thiếu nguồn → clarify/handoff. Xóa/sửa/TTL phủ summary/vector/cache/spool/jobs/restore suppression; session purge khi disconnect. Không auto resume bot chỉ vì listener reconnect.
 
-## Quy tắc bắt buộc
+## Definition of Done
 
-1. Tenant lấy từ credential đã xác thực hoặc channel binding phía server; không tin tenant/customer do LLM hay webhook body tùy ý cung cấp. Mọi lookup giới hạn tenant; bộ nhớ khách còn giới hạn customer.
-2. Không log raw token, toàn bộ prompt hoặc transcript thật. Repo public chỉ chứa fixtures tổng hợp. `.env.example` không có giá trị thật; không commit `.env`.
-3. Dùng API Zalo OA và WhatsApp Cloud API chính thức. Không dùng cookie, session WhatsApp Web, QR automation, endpoint suy đoán hay account Zalo cá nhân.
-4. Xác thực webhook trước parse/side effect; lưu durable inbox trước ACK; có dedup và outbox. Không tuyên bố exactly-once đến provider khi API không bảo đảm.
-5. Runtime không có credential để ghi database tùy ý. Mọi tool ghi đi qua authorization, idempotency và approval tương ứng. Không cấp SQL/shell/browser tùy ý cho agent CSKH.
-6. RAG chỉ đọc nguồn published, còn hiệu lực, đúng ACL. Trả lời dựa dữ liệu sống cho đơn hàng/giá/tồn kho. Không đủ bằng chứng thì hỏi lại hoặc chuyển người.
-7. Tin người dùng và tài liệu là dữ liệu không tin cậy, không phải system instruction. Nội dung “ignore instructions” không được đổi quyền hoặc công cụ.
-8. Bộ nhớ riêng của khách không trở thành KB dùng chung. Preference có thể lưu theo policy; tri thức chung cần người duyệt. Có xóa, sửa, TTL và chống tái sinh dữ liệu đã xóa.
-9. Human handoff có state/ownership version. Sender kiểm tra lại state ngay trước gửi, không chỉ trước gọi LLM. Bot không tiếp tục khi nhân viên đã nhận ca.
-10. Quyền gửi, giá, quota, thời hạn token phải cấu hình có phiên bản và nguồn. Không giả định WhatsApp service message luôn miễn phí hoặc Zalo OpenAPI có cửa sổ giống OA Manager.
+Code + contract + tests + quan sát lỗi + docs + rollback; migration chạy trên empty/upgrade fixture; CI không cần secret production. Test local, controlled real-account và production tách riêng. Zalo cá nhân không gọi là official sandbox khi chỉ dùng account test. ACCOUNT_RISK_REVIEW_REQUIRED/MOCK_ONLY/REAL_ACCOUNT_BLOCKED phải ghi rõ.
 
-## Definition of Done cho từng task
+Commands mục tiêu sau scaffold: pnpm lint, typecheck, test, test:contracts, test:security, test:e2e, eval, build. Chưa có app scripts ở planning baseline; không báo đã chạy khi chưa tồn tại.
 
-Code + contract + test + tài liệu + quan sát lỗi + hướng rollback. Migration được kiểm thử trên DB trống và nâng cấp có dữ liệu giả. CI không cần secret production. Test integration thật được tách và ghi rõ skipped khi thiếu credential; skipped không có nghĩa passed.
-
-Lệnh mục tiêu sau SB-02 (chưa tồn tại ở planning baseline): `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:contracts`, `pnpm test:security`, `pnpm test:e2e`, `pnpm eval`, `pnpm build`. Agent SB-02 phải tạo các script này hoặc ghi quyết định thay đổi được duyệt; không giả vờ các lệnh hiện đã chạy.
-
-## Mẫu báo cáo cuối task
-
-```text
-Task: SB-XX
-Status: ready_for_review | blocked (không tự ghi production-ready)
-Implemented:
-Files / contract version:
-Commands actually executed + result:
-Acceptance evidence:
-External dependencies not verified:
-Migration / rollback:
-Next dependency unblocked:
-```
+Bàn giao: Task/Status; implementation và files; command thực chạy + result; acceptance evidence; connector/account capability chưa xác minh; migration/rollback; next dependency. Không tự báo production-ready trước QA và owner sign-off.

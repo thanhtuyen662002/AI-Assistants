@@ -1,56 +1,42 @@
-# 01 — Sản phẩm, phạm vi và tiêu chí thành công
+# 01 — Phạm vi sản phẩm hiện hành
 
-## Mục tiêu
+## Mục tiêu và tài khoản
 
-Xây bộ não thứ hai giúp agent CSKH hiểu doanh nghiệp, nhớ đúng khách, nối tiếp công việc và dùng công cụ được phép trên Zalo OA/WhatsApp. Người vận hành thấy agent dựa vào nguồn nào, đã làm gì, cần người hỗ trợ ở đâu và có thể sửa/xóa tri thức hoặc dừng tự động ngay.
+Agent CSKH có second brain cho **Zalo cá nhân của chủ dự án** và WhatsApp (giữ giả định Cloud API, chưa xác nhận riêng loại account). Không OA onboarding. Phần Zalo tích hợp qua personal bridge không chính thức chỉ sau kiểm chứng SB-27 và owner cho phép; không hứa tài khoản chính không bị hạn chế/khóa. Phương án manual copilot khi không dùng bridge phải được gắn nhãn chưa có tự động đồng bộ.
 
-## Giả định để triển khai không bị chờ
+Một doanh nghiệp pilot, 1:1, tiếng Việt mặc định, tiếng Anh theo khách. Chưa có ngành hàng/CRM/ngân sách/traffic; dùng cửa hàng sản phẩm thông thường synthetic để code độc lập. Không bịa policy thật. Một tài khoản cá nhân có thể chứa cả công việc và đời tư: chỉ thread CSKH được allowlist/owner đánh dấu mới vào pipeline; không đọc toàn bộ history/danh bạ/nhóm. Lọc trước lưu/LLM, không chỉ trước hiển thị UI.
 
-Một doanh nghiệp pilot, giao tiếp 1:1, tiếng Việt mặc định, tiếng Anh khi khách sử dụng. Chưa biết ngành hàng, CRM, ngân sách, số hội thoại và hạ tầng mong muốn. Dùng dữ liệu giả của cửa hàng bán sản phẩm thông thường; không suy ra lĩnh vực nhạy cảm hoặc trường hợp bị nền tảng hạn chế. Chỉ sandbox/mocks cho đến khi checklist chủ dự án hoàn tất.
+## Use cases và acceptance
 
-Thiết kế chịu tải thử ban đầu 10 tin inbound/giây trong 10 phút và 50 hội thoại đang xử lý; đây là **test target**, không phải dự báo traffic hay quota provider. Tăng tải theo đo thực tế. Không đưa con số hạ tầng hoặc lịch ra mắt thành cam kết khi chưa có dữ liệu.
-
-## Hành trình cần chạy được
-
-| Use case | Luồng đúng | Kết quả / phương án thiếu dữ liệu |
+| Use case | Hành vi đúng | Khi thiếu điều kiện |
 |---|---|---|
-| FAQ và chính sách | Tra tài liệu published còn hiệu lực → soạn câu trả lời → lưu source refs | Trả lời có căn cứ; không thấy nguồn thì hỏi rõ hoặc chuyển người |
-| Khách quay lại | Xác định đúng channel identity → lấy preference/lịch sử được phép → nối tiếp case | Không yêu cầu kể lại toàn bộ; không lộ lịch sử khách khác |
-| Tình trạng đơn hàng | Xác minh quyền sở hữu → gọi order API → trả trạng thái mới nhất | API lỗi thì nói chưa kiểm tra được; không lấy status cũ từ vector |
-| Đổi trả/khiếu nại | Tra chính sách → thu thông tin tối thiểu → tạo ticket có xác nhận | Nhân viên duyệt ngoại lệ; bot không tự hoàn tiền |
-| Tiếp quản bởi người | Khách yêu cầu người hoặc rủi ro cao → ticket/queue → tóm tắt có nguồn | Bot dừng, không tranh trả lời; SLA theo giờ làm việc cấu hình |
-| Liên kết Zalo–WhatsApp | Chứng minh sở hữu qua tài khoản đăng nhập/challenge riêng cho linking | Mới dùng chung bộ nhớ sau link hợp lệ; tên/số tự khai không đủ |
-| Cập nhật tri thức | Upload → kiểm tra → chuẩn hóa → version → review → publish | Bản cũ bị loại khỏi retrieval ngay khi hết hiệu lực/thu hồi |
-| Sửa/xóa dữ liệu | Yêu cầu của khách → xác minh → sửa/tombstone → purge các bản dẫn xuất | Không phục hồi ký ức đã xóa từ bản tóm tắt hoặc job cũ |
+| FAQ/chính sách | Retrieve published KB còn hiệu lực, giữ source refs | Clarify/handoff, không tự tạo policy |
+| Khách quay lại | Đúng binding+customer, preference/case có nguồn | Không đọc chéo hoặc tự gộp hai kênh |
+| Tra đơn hàng/giá/tồn kho | Xác minh quyền, gọi API nguồn, giữ as_of | Tool lỗi nói chưa kiểm tra được, không dùng memory cũ |
+| Khiếu nại/đổi trả | Tra policy, lấy thông tin tối thiểu, tạo ticket idempotent | Ngoại lệ và monetary action qua người; không auto refund |
+| Nhân viên tiếp quản | CAS ownership, hủy pending bot, nguồn/source summary | Không tự resume do timeout/reconnect; in-flight có thể không thu hồi |
+| Sửa/xóa ký ức | Xác minh, sửa/tombstone, phủ summary/vector/cache/job/bridge spool | Hiển thị tiến độ/lỗi và retention/backup limits rõ |
+| Duyệt tri thức | Upload → quarantine → extract → version → review → publish | Không biến lời khách thành chính sách chung |
+| Kết nối personal | Owner QR, private session, một listener, account-health rõ | Revoked/conflict/gap → pause, báo người, không hứa no-loss |
 
-## Phạm vi
+## MVP
 
-### MVP nghiệm thu
+Text CSKH 1:1 hai kênh; mock trước real-account/sandbox phù hợp từng kênh. Unified inbox, KB Markdown/text/PDF có text layer, lexical+vector retrieval, facts/episodes riêng khách, order read-only adapter và ticket; takeover, source evidence, deletion, cost cap, kill switch. Unsupported image/audio/file chỉ ghi metadata được phép và chuyển người/yêu cầu mô tả; không bịa đã đọc ảnh.
 
-Text inbound/outbound cho cả hai kênh chính thức; sandbox/mock trước tài khoản thật. Inbox hợp nhất với quyền nhân viên; một kho tài liệu Markdown/text và PDF có text layer; tìm kiếm theo từ khóa + vector; source refs nội bộ. Bộ nhớ phiên, preference có nguồn, lịch sử case; user identity không tự merge đa kênh. Tra cứu order read-only qua adapter mock và một hệ thống thật khi được chỉ định. Ticket idempotent. Human handoff, kill switch, quota/cost cap, audit và đánh giá chất lượng.
+Zalo cá nhân: allowlist thread, QR/session lifecycle, durable internal ingest, duplicate/self-loop guard, reconnect và data-gap report. Không yêu cầu hỗ trợ import toàn bộ lịch sử; nếu nghiên cứu import sau này phải owner chọn thread/range, quyền xử lý và label historical, tuyệt đối không tự trả lời backlog lịch sử.
 
-Ảnh/file khách gửi trong MVP: nhận metadata, kiểm tra an toàn và báo chuyển người hoặc yêu cầu mô tả bằng text; không bịa rằng đã đọc ảnh. Chưa cho tải media tùy ý vào LLM.
+WhatsApp: vẫn official Cloud API, template/consent ngoài cửa sổ phù hợp; chuẩn bị account theo checklist riêng. Không suy rằng yêu cầu personal Zalo là chấp thuận WhatsApp Web.
 
-### V1 sau pilot
+## Chế độ
 
-UI sửa/link/unlink identity có xác minh; workflow phê duyệt hành động ghi; extraction tài liệu phức tạp có kiểm chứng; vòng học có review; follow-up theo template được duyệt và đồng ý nhận tin. Thêm CRM thật còn thiếu. Kiểm tra chi phí và quyền sử dụng riêng trước khi thêm voice/OCR.
+OFF chỉ giữ phần được phép/nhân viên; SHADOW không gửi; COPILOT bridge có nhân viên duyệt nhưng vẫn unofficial; AUTO_LOW_RISK chỉ FAQ/order read đã xác minh và có đủ capability/safety gates. Manual copilot là biến thể **không kết nối bridge**, người đưa nội dung và gửi ở app chính thức.
 
-### Ngoài phạm vi
+Không bật auto Zalo nếu session không khỏe, có gap chưa đối soát, không quan sát chắc human self messages trong mô hình dùng nhiều client, account bị challenge/restrict hoặc policy/privacy chưa được review. Owner acceptance không là platform approval.
 
-Zalo cá nhân, nhóm chat hoặc broadcast marketing hàng loạt; WhatsApp Web automation; cuộc gọi/voice agent; thanh toán/hoàn tiền tự động; bot AI tổng quát trả lời mọi chủ đề; fine-tune bằng dữ liệu khách; graph database; multi-agent tự quyết ở runtime; billing SaaS; tích hợp tất cả CRM; triển khai hạ tầng trả phí không được duyệt.
+## Ngoài phạm vi
 
-## Cấp độ tự động hóa
+Zalo OA/ZBS, nhóm, tự kết bạn/broadcast, scrape danh bạ/số điện thoại, né CAPTCHA/anti-bot/block, đổi proxy/tài khoản để né chặn, voice calls, auto monetary actions, runtime multi-agent tự do, fine-tune chat khách, graph database, billing SaaS. Không tự provision trả phí hoặc tự đăng nhập account thật từ task planning.
 
-`OFF`: chỉ tiếp nhận và chuyển người. `SHADOW`: chạy suy luận/đánh giá nhưng không gửi. `COPILOT`: nhân viên xem và duyệt bản nháp. `AUTO_LOW_RISK`: tự trả FAQ có nguồn, preference hợp lệ, order read-only đã xác minh. Không có chế độ tự thực hiện mọi action. Mỗi tenant/channel có flag; sender là nơi cưỡng chế cuối cùng.
+## Mục tiêu pilot cần đo
 
-## Ưu tiên nghiệp vụ
-
-P0: trả lời đúng phạm vi, không lộ dữ liệu, không bỏ sót tin, không gửi khi người đang xử lý, không thực hiện hành động trái quyền. P1: nhớ preference, giảm lặp hỏi, trích nguồn, tool read-only, UI quản trị. P2: tự đề xuất cải thiện KB, báo cáo giá trị, kênh/media bổ sung.
-
-## Mục tiêu đo lường đề xuất
-
-Tối thiểu 200 câu đánh giá có nhãn trước auto mode; 50 mẫu được người độc lập review. Grounded correctness ≥90% trên câu trả lời trong phạm vi; unsupported-claim ≤2%; không chấp nhận lỗi lộ dữ liệu hoặc action trái quyền dù điểm tổng cao. Recall@5 ≥90% trên tập retrieval có nguồn đích. Handoff bắt buộc ở tình huống rủi ro ≥95%, riêng yêu cầu trực tiếp gặp người và kiểm thử takeover phải đạt 100%.
-
-ACK webhook nội bộ p95 ≤1 giây sau khi nhận, text response p95 ≤10 giây ở tải thử với provider khỏe; tách thời gian phía hệ thống và phía provider, không báo đáp ứng SLA production nếu chưa load test. Đếm containment chỉ khi case giải quyết không cần người và không reopen trong 24 giờ; không tối ưu bằng cách ngăn khách gặp nhân viên.
-
-Ngưỡng là điều kiện mục tiêu cho pilot, chủ dự án có thể điều chỉnh bằng Decision Record có lý do. Chi tiết cách tính và bộ test ở tài liệu 07.
+≥200 eval cases, 50 mẫu human review; grounded correctness ≥90%, unsupported claims ≤2%, retrieval Recall@5 ≥90%; zero leak/unauthorized action trong suite là hard gate. Handoff bắt buộc ≥95%, riêng yêu cầu trực tiếp và takeover race 100%. Backend test target 10 inbound/s, 50 conversations, p95 durable ingest ≤1s và response ≤10s khi dependency khỏe. **Không phát tải này vào tài khoản Zalo thật** hoặc coi đây là quota được Zalo cho phép. Thời gian bridge offline/gap báo riêng, không tính uptime/coverage bằng giả định. Chi tiết tại docs/07.

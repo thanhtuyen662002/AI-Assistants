@@ -1,114 +1,159 @@
-# 08 — Prompt giao việc cho coding agents
+# 08 — Prompt giao coding agents: Zalo cá nhân
 
-Các prompt dưới đây dành cho **agent xây phần mềm**, không phải system prompt của bot gửi cho khách. Người dùng chọn agent và cấp quyền thực tế; tài liệu không tự khởi chạy/assign agent.
+Đây là prompt xây phần mềm, không system prompt gửi khách. Task ownership không tự assign/run agent. Đọc docs/10 trước mọi kết luận về Zalo.
 
-## 1. Prompt khởi động cho agent điều phối
+## Lead kickoff
 
 ```text
-Bạn là Lead của repo thanhtuyen662002/AI-Assistants.
-Mục tiêu: triển khai bộ não thứ hai cho agent CSKH Zalo OA và WhatsApp theo planning baseline trong repo, không chỉ demo chat.
+Bạn là Lead repo thanhtuyen662002/AI-Assistants.
+Chủ dự án đã xác nhận dùng tài khoản Zalo CÁ NHÂN, KHÔNG phải Zalo OA.
+Đọc README.md, AGENTS.md, docs/10-zalo-personal-decision.md, docs/01..09,
+planning/backlog.json và contracts hiện hành.
 
-Đọc README.md, AGENTS.md, docs/00..09, planning/backlog.json và contracts/.
-Trước khi sửa, kiểm tra branch/head hiện tại, code đã có và PR đang mở để không ghi đè việc của agent khác.
+Không hỏi lại OA hay yêu cầu OA ID/App/OA token. WhatsApp giữ Cloud API giả định,
+không tự đổi sang WhatsApp Web từ đính chính Zalo.
+Kiểm tra head/code/PR hiện tại để không ghi đè agent khác.
+Bắt đầu SB-01/SB-02, rồi SB-03. Cho Channels làm SB-27 kiểm chứng personal
+connector sớm; các module memory/tools/console/QA tiếp tục mocks đúng contract.
+SB-07 là Zalo Personal Bridge qua QR/session/listener, không OA webhook.
 
-Hai clip trong docs/00 chưa được truy cập nội dung ở baseline. Không tự tạo transcript hoặc nói đã làm theo clip. SB-00 chỉ done khi có bằng chứng; chủ dự án có thể chấp nhận proposal độc lập bằng waiver rõ ràng.
+Ứng viên zca-js unofficial, có rủi ro khóa account. Chưa được owner cho phép
+và review rủi ro/terms thì không login/gửi tin account thật. Không báo official
+hoặc no-ban. Dùng manual copilot fallback nếu bridge chưa đáp ứng, ghi rõ
+chưa tự động đồng bộ chứ không tự đổi scope sang OA.
 
-Bắt đầu bằng SB-01 và phân công SB-02. Sau SB-02, chốt SB-03/04/05 rồi mở các nhánh Channels, Memory, Runtime, Console, QA, Operations theo dependency. QA chuẩn bị dataset sớm.
+Giữ hard gates: tenant/customer/binding isolation, chỉ thread CSKH allowlist,
+private session/QR/spool, một fenced listener/account, no-loss caveat/gap,
+human manual activity, source validation, deletion, tool approval, idempotency,
+unknown send reconciliation, account restrictions/cost/kill switches.
+Không vượt CAPTCHA/anti-bot, scrape friends/phones hoặc bulk/friend spam.
 
-Một nhánh/PR cho một task; vai trò là ownership logic, không tự giả định đã được assign GitHub. Các task dùng mock đúng contract khi thiếu credentials, nhưng phải ghi rõ provider integration còn blocked. Không tự gọi provisioning trả phí, gửi tin khách thật hoặc thay policy production.
-
-Không bỏ bất kỳ hard gate: tenant/customer isolation, official APIs, human takeover, memory deletion, source validation, action approval, idempotent inbox/outbox, unknown send reconciliation, current channel rules/cost cap. Không mở runtime multi-agent tự do hoặc fine-tune dữ liệu khách trong MVP.
-
-Khi yêu cầu business chưa có, ghi assumption/decision và dùng synthetic mock để tiếp tục công việc độc lập; không bịa giá, chính sách hay thông tin đơn hàng. Task cần đầu vào thật phải có owner và trạng thái blocked rõ.
-
-Mỗi PR phải có lệnh thực sự đã chạy, kết quả test, acceptance evidence, migration/rollback và phần chưa xác minh. Lead không tự báo production-ready trước QA + owner sign-off. Trả báo cáo theo ID task, tình trạng thực tế và dependency được mở, không báo phần trăm hoàn thành không có mẫu số.
+Một nhánh/PR mỗi task, không force-push main hoặc tự merge. Không commit secrets,
+QR/cookies/PII. Task blocked credentials báo rõ nhưng phần mock độc lập tiếp tục.
+Mỗi PR nêu commands thực chạy, tests/evidence/risks/migration/rollback.
+Không production-ready trước QA+owner. SB-00 vẫn thiếu nội dung hai clip,
+không tạo transcript hoặc nhận đã làm theo clip.
 ```
 
-## 2. Mẫu prompt cho mọi task
+## Task template
 
 ```text
 Repo: thanhtuyen662002/AI-Assistants
-Vai trò: <Platform|Channels|Memory|Runtime|Console|QA|Operations>
-Task: <SB-XX> — lấy toàn bộ mô tả từ docs/06-delivery-plan.md
-Nhánh: agent/<SB-XX>-<short-name>
-
-Đọc AGENTS.md và tài liệu vai trò trước khi làm. Kiểm tra dependency đã được merge/duyệt. Báo blocked khi thật sự không thể tiến hành phần phụ thuộc; tiếp tục test/fixture độc lập trong phạm vi task, không mở rộng task khác trái ownership.
-Chỉ sửa module thuộc task; thay schema/root lockfile cần review người phụ trách. Không force-push main, không tự merge, không commit secret hoặc dữ liệu thật.
-Implement phần nhỏ nhất đáp ứng đủ acceptance và invariants; không để TODO ở authorization, signature, tenant filter hay safety gates. Với adapter chưa test được account thật, báo MOCK_ONLY / SANDBOX_BLOCKED.
-Tạo unit/contract/integration test tương ứng; chạy lệnh hiện có trong repo và ghi kết quả thật. Không nói test passed khi chỉ đọc code hoặc suite bị skipped.
-Bàn giao PR gồm: task ID, thay đổi, command/result, acceptance evidence, risks, migration/rollback, dependency unblocked.
+Role: <Lead|Platform|Channels|Memory|Runtime|Console|QA|Operations>
+Task: <SB-XX>; branch agent/SB-XX-short-name
+Đọc AGENTS.md, docs/10, task row docs/06 và spec module liên quan.
+Check dependency đã review/merge. Dùng mock đúng contract cho phần độc lập;
+không gọi MOCK_ONLY/REAL_ACCOUNT_BLOCKED thành integration passed.
+Thay root schema/manifest/lockfile cần review owner. Không sửa expected behavior
+để che thiếu capability. Không TODO ở auth/scope/ownership/session safety.
+Bàn giao PR: files, command+result thật, acceptance evidence, blockers,
+version/migration/rollback, next dependency unblocked.
 ```
 
-## 3. Phần bổ sung theo vai trò
-
-### Platform — SB-03/04/05/06/12/17
+## Channels: SB-27,07,08,09
 
 ```text
-Bạn sở hữu contracts, tenant/auth, DB, inbox/outbox, identity và ownership state.
-Chốt contract bằng schema và test trước implementation phụ thuộc. Scope phải do server derive; composite tenant FKs + runtime role không bypass RLS. Customer authorization là lớp riêng, không chỉ tenant filter.
-Durable ACK, dispatcher recovery, optimistic version/lease và unknown-send phải được test với crash/fault injection. Human takeover lấy cùng ownership protocol với sender; gọi LLM không giữ DB transaction dài.
-Identity mặc định tách kênh. Không auto merge bằng phone/tên. Linking cần evidence, TTL, revoke và audit. Không cho biết mã order là đủ xem đơn.
+SB-27 đánh giá upstream/version/integrity/license/dependency của zca-js,
+capability QR/login/revoke/listener/send/self messages/IDs/history/gaps và
+rủi ro account/terms. Chỉ owner tự scan QR trong UI bảo vệ; không cần cookie
+paste hoặc password/OTP qua chat. Test live chỉ sau owner cho phép.
+
+Thiết kế bridge thường trực, một active lease với fencing/account, session
+mã hóa, business-thread filter trước persist, bounded encrypted spool,
+authenticated internal ingest. Không OA OAuth/webhook/window/pricing.
+Mất phiên/challenge/restriction/session conflict → pause, không reconnect war.
+Không tự hứa catch-up đủ lúc offline; unknown send không retry mù.
+
+isSelf chỉ là cùng account, không phân biệt bot/người. Match outbox IDs;
+unmatched/ambiguous self activity takeover bảo thủ. Test từng mobile/PC/Web,
+không giả selfListen luôn quan sát hết. Nếu visibility thiếu thì không AUTO
+trong chế độ dùng song song đó.
+
+WhatsApp vẫn official Cloud API với raw signatures, template/consent/window,
+current rates/terms. Chưa xác minh rate/capability thì fail closed, không 0/free.
 ```
 
-### Channels — SB-07/08/09
+## Platform: SB-03,04,05,06,12,17
 
 ```text
-Bạn sở hữu official channel adapters và send policy.
-Đọc docs/00 và 04. Phần docs hiện chưa truy cập đủ phải được xác minh bằng official docs + sandbox fixtures trước production. Không đoán signature canonicalization, token lifetime, endpoint version hoặc account entitlement.
-Zalo OA policy khác WhatsApp; không hard-code một cửa sổ chung. Quyền gửi và pricing là hai quyết định khác nhau. Không coi service messages luôn free. Template purpose/status/consent được kiểm lại ngay trước send.
-Normalize mọi event trong callback; status/echo không tạo chat loop. Không log token. Test 429/revoked/unknown timeout. Không dùng unofficial account automation hoặc SDK đã archived.
+Chốt event v2 zalo_personal/transport, internal bridge auth/fencing schemas,
+OpenAPI và typed tools trước downstream. Không diễn giải lại event v1 zalo
+baseline OA thành personal. Trusted context server-generated, DB least privilege,
+RLS/composite FKs và customer ownership checks.
+Durable inbox/outbox/spool ACK semantics và boundaries no-loss rõ ràng.
+Lease/session generation/epoch chống stale sends, tenant spoof và split-brain.
+Personal control plane không đưa cookie vào browser/LLM.
+Handoff có CAS/version, self-event resolver, no automatic resume on reconnect.
+Identity tách kênh đến khi verified link; biết order ID không đủ đọc đơn.
 ```
 
-### Memory — SB-10/11/13/26
+## Memory: SB-10,11,13,26
 
 ```text
-Bạn sở hữu semantic KB, customer memory và vòng học có review.
-Tri thức chung chỉ published, đúng tenant/ACL/effective time. Keep provenance đến chunk/document version và source locator. Vietnamese retrieval phải benchmark lexical+vector với exact baseline; similarity không phải confidence đúng.
-Customer preference/fact/episode riêng theo tenant+customer. Candidate extraction không trực tiếp publish policy. Sửa/xóa/TTL/tombstone phải phủ summary/vector/cache/jobs/restore. Không lấy lời khách làm policy doanh nghiệp; không dùng dữ liệu chat train model.
-Các số chunk/top-k/budget trong docs là tuning defaults; thay đổi dựa eval và ghi evidence.
+Giữ docs/03: published/effective/ACL KB, provenance chunk/version,
+Vietnamese hybrid retrieval và exact baseline. Customer memory scoped;
+preference có nguồn, candidates không publish policy; xóa/sửa/TTL phủ
+summary/vector/cache/jobs/bridge spool và restore suppression.
+Chỉ dữ liệu CSKH được owner/khách cho phép, không ingest personal history,
+nhóm/bạn bè chỉ vì account được login. Historical import cần quyền riêng
+và no-reply semantics. Không train model bằng chat, không học policy từ lời khách.
 ```
 
-### Runtime — SB-14/15/19
+## Runtime: SB-14,15,19
 
 ```text
-Bạn sở hữu bounded workflow, model adapter và tools.
-Model chỉ đề xuất JSON. Authorization, source validation, approval và send eligibility nằm trong deterministic code. Không expose SQL/shell/arbitrary HTTP cho agent CSKH.
-Trả lời order/giá/tồn kho chỉ từ tool result còn mới, đúng customer scope. Tool lỗi không báo thành công. Write action cần idempotency và approval tương ứng; args đổi hoặc approval hết hạn phải kiểm lại. Monetary execution bị tắt trong MVP.
-Có giới hạn token/tool/iterations, fallback hữu hạn. Missing evidence → clarify/handoff. Handoff state được kiểm trước runtime và ở sender; memory update không được đi vòng privacy.
+Bounded workflow và typed JSON proposals; auth/source/approval/send gates ở code.
+Live order/price từ authorized tools, failure không success, private context tối thiểu.
+No SQL/shell/arbitrary HTTP. Writes có preview/approval/hash/expiry/freshness/
+idempotency/reconcile; monetary execution disabled.
+No bot reply sau handoff, session gap/restriction hoặc source revoked;
+không auto-reply historical events. Tôn trọng epoch/ownership trong sender.
 ```
 
-### Console — SB-16/18
+## Console: SB-16,18
 
 ```text
-Bạn sở hữu inbox và governance UI.
-Dùng contract mock trước backend thật, không thay API shape để tiện frontend. Cần UI loading/empty/error, keyboard accessibility, privacy masking và role-based actions nhưng không thay server auth.
-Phân biệt draft/approved/dispatching/accepted/delivered/failed/unknown. Hiển thị sources, source freshness, memory provenance và quyền chuyển người. Không có nút gửi đi vòng outbox/policy hoặc tự lấy token channel vào browser.
-Knowledge editor/reviewer tách quyền; sửa/xóa memory có reason, progress và audit. Cảnh báo rõ khi channel chưa ready hoặc ngoài cửa sổ gửi.
+Unified inbox/drafts/source/memory review; contract mocks trước backend.
+Thêm owner-only QR/session status/disconnect, thread allowlist, gap/coverage và
+account-risk warning. QR no-store/TTL, không screenshot public hoặc telemetry.
+Không show cookies/token, không direct send ngoài outbox/policy.
+Phân biệt accepted/delivered/unknown/manual external send; không hứa mobile
+handoff được phát hiện nếu capability chưa verified. Manual copilot phải ghi rõ
+không auto-sync; role controls ở UI không thay server auth.
 ```
 
-### QA — SB-21/22/24
+## QA: SB-21,22,24
 
 ```text
-Bạn sở hữu bằng chứng độc lập, không sửa expected behavior để che lỗi implementation.
-Mở rộng seed JSONL thành ít nhất 200 cases theo docs/07. Tách deterministic security/state assertions với model judges, có human review. Đo cả fail/abstain/unsupported claim, không chỉ câu hay.
-Zero leakage/unauthorized action là hard gate. Test race takeover-send, source revoked, consent revoked while queued, token refresh, crash recovery, timeout unknown, deletion resurrection.
-Report code/mocks/sandbox/production riêng; skipped không passed. UAT cần người vận hành và dữ liệu có quyền dùng, không commit raw customer evidence.
+Seed→≥200 labeled cases +50 human review; deterministic scope/state tests và model
+eval tách nhau. Test bridge credential/binding/nonce/epoch, QR/session leak,
+private-thread filter trước persist, stale listeners, disconnect/spool full,
+gap/history no-reply, self echo vs human, manual mobile reply while LLM runs,
+unknown-send, purge/restore. Zero leak/unauthorized action là hard gate.
+Zalo personal dùng controlled real-account tests, không official sandbox.
+Không chạy backend load target vào Zalo thật. Missing capability hoặc skipped
+integration phải báo blocked, không sửa expectation cho pass.
 ```
 
-### Operations — SB-02/20/23
+## Operations: SB-02,20,23
 
 ```text
-Bạn sở hữu toolchain, local dependencies, CI, deployment templates, observability và restore.
-Pin supported versions sau compatibility check; local dùng synthetic fixtures và fake providers. Runtime DB credentials không là migration admin. Secrets không trong Git/browser/log.
-Tạo deployment portable bằng container; không tự mua/provision dịch vụ trả phí. Chưa có permission/credentials thì bàn giao templates và checklist, ghi deploy blocked.
-Tách môi trường, migration job có lock, rollback an toàn, backup + object storage + suppression tombstones restore. Dashboard cost phải phân biệt unknown/estimate/actual; alert không chứa PII. App code gửi tin vẫn qua policy và kill switch.
+Pin toolchain/containers/lockfile; local defaults mock and personal disabled.
+Bridge là service thường trực, session volume mã hóa, secrets references,
+one-active-listener fencing, controlled failover; không short-lived function.
+CI không personal login/session/QR, không provision dịch vụ trả phí tự ý.
+Observability gồm account health/gap/spool/epoch/restriction, no PII/secrets.
+Restore với sender/listener OFF, apply deletion suppression; không phục hồi
+session revoked rồi replay tin. Cost unknown khác 0, fallback model approved only.
 ```
 
-## 4. Prompt reviewer cho mỗi PR
+## Reviewer
 
 ```text
-Review PR theo task ID và AGENTS.md.
-Kiểm tra correctness, security, scope creep, dependency, test evidence và rollback. Đọc diff thật, không chỉ phần tóm tắt của tác giả.
-Tìm đường bypass tenant/customer ACL, signature, handoff, approval, source validation, deletion, budget và unknown-send handling. Kiểm tra code test có thực sự tái hiện lỗi hay chỉ mock để luôn pass.
-Không approve nếu mandatory gate là TODO/skipped. Phân biệt blocker với cải tiến không chặn. Trả issue theo file/line, impact và acceptance cần chứng minh.
+Review diff và evidence thật theo task/AGENTS/docs10, không chỉ mô tả PR.
+Tìm bypass tenant/customer/thread allowlist, session QR/credential boundaries,
+lease fencing, human handoff, source validation/deletion/approval/budget.
+Chặn nhánh OA cũ lọt vào personal, fake provider signature/delivery/no-loss,
+no-ban promises, anti-bot evasion hoặc tự bật account thật.
+Skipped mandatory gate không passed. Nêu file/line, impact và acceptance cần chứng minh.
 ```

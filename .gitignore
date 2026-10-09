@@ -1,4 +1,4 @@
-# Secrets and private business/customer data
+# Secrets, private chat and business data
 .env
 .env.*
 !.env.example
@@ -9,7 +9,18 @@ transcripts/
 *.pem
 *.key
 
-# Dependencies and generated application output
+# Personal Zalo authentication and bridge state (not sufficient alone: scan commits).
+zalo-sessions/
+.zalo/
+bridge-spool/
+cookies.json
+cookie.json
+session.json
+qr.png
+qrcode.png
+login-qr.*
+
+# Dependencies, generated output and local tooling
 node_modules/
 .pnpm-store/
 .next/
@@ -19,8 +30,6 @@ coverage/
 playwright-report/
 test-results/
 .turbo/
-
-# Local infrastructure and diagnostics
 .data/
 volumes/
 *.log
@@ -30,4 +39,4 @@ __pycache__/
 *.pyc
 .venv/
 
-# Commit only synthetic, reviewed fixtures; never raw provider/CRM exports.
+# Fixtures must be synthetic/reviewed; no QR screenshots or raw provider exports.

@@ -1,92 +1,66 @@
-# 07 — Chất lượng, bảo mật, kiểm thử và release gates
+# 07 — Chất lượng, bảo mật và release gates hiện hành
 
-Mọi số liệu bên dưới là mục tiêu nghiệm thu, chưa được đo trên sản phẩm. Planning baseline không có runtime, CI application hoặc sandbox credentials; không có test integration nào được báo passed ở đây.
+Các chỉ số là mục tiêu cần đo, không kết quả application đã đạt. Phạm vi Zalo cá nhân theo docs/10; không yêu cầu OA token/cửa sổ OA/official Zalo sandbox. Hai clip chưa có nội dung vẫn giữ caveat.
 
-## 1. Test pyramid
+## 1. Test pyramid và dataset
 
-| Lớp | Kiểm gì | Dữ liệu / bằng chứng |
-|---|---|---|
-| Unit | Policy clock boundaries, state transitions, source filter, fact conflict, costs, redaction | Fake clock, fixture thuần, không gọi mạng |
-| Contract | JSON Schema, OpenAPI, adapter normalize, tool args/results, UI API | Valid/invalid JSON + provider fixtures đã khử định danh |
-| Integration | DB RLS/FK, inbox/outbox, Redis dispatcher, TTL/purge, object storage, ownership race | Compose dependencies thật, không chỉ mock DB |
-| E2E | Conversation → RAG/tool → draft/reply → delivery → memory/handoff | Mock providers trước, sandbox suite tách riêng sau |
-| Model eval | Groundedness, correctness, refusal/clarify, tiếng Việt, memory, tool choice | Golden test set có nhãn và nguồn; review độc lập |
-| Security/chaos | IDOR, prompt injection, forged callback, worker crash, unknown sends, secret leak, restore | Attack fixtures, fault injection, audit evidence |
-| UAT | Nhân viên xử lý và khách đồng ý thử | Kịch bản thật có kiểm soát; dữ liệu không ở public Git |
+Unit: fake clock, policy, state/ownership/session transitions, redaction, cost/memory conflicts. Contract: event v2 channel/transport, decision v1, tools/OpenAPI, bridge command/service authentication; reject extra fields/secrets. Integration: DB thật/RLS/FKs, queue/outbox/spool, lease fencing, tombstones/objects. E2E: mocks trước, real-account controlled Zalo tests và official WhatsApp sandbox riêng sau. Model eval: correctness/grounding/clarify/tool/memory/tiếng Việt. Security/chaos: account privacy, signatures/service credentials, prompt injection/IDOR, worker crash, gap/unknown-send/takeover/restore. UAT: nhân viên và recipients đồng ý thử.
 
-LLM judge không là oracle duy nhất. Dùng code assertions cho scope/quyền/state và người đánh giá cho claim nghiệp vụ. Tách tập phát triển và test giữ kín; không đưa expected answer của test vào KB/prompt chỉ để tăng điểm.
+`evals/golden-cases.jsonl` chỉ seed kịch bản `fixture_status=to_implement`, chưa test runtime. SB-21 mở rộng ≥200 cases có nhãn: 60 FAQ/policy, 30 order/tool, 25 memory/identity, 25 handoff/approval, 20 channel/session, 20 injection/privacy, 20 failure/retry. Gồm Vietnamese dấu/không dấu/lỗi chính tả/emoji/mã hàng và English. Mỗi case cần concrete fixtures, tenant/customer, allowed source refs, expected/forbidden behavior và severity. Tách held-out set khỏi KB/prompts; 50 mẫu human review độc lập. Model judge không là oracle duy nhất.
 
-## 2. Golden set
+## 2. Metrics và mẫu số
 
-`evals/golden-cases.jsonl` là **seed tổng hợp**, chưa đủ để nghiệm thu. SB-21 mở rộng tối thiểu 200 tình huống có nhãn: 60 FAQ/policy; 30 đơn hàng/tool; 25 memory/identity; 25 handoff/approval; 20 channel rules; 20 injection/privacy; 20 failure/retry. Có tiếng Việt có/không dấu, lỗi chính tả, emoji, code sản phẩm, câu nhiều ý và tiếng Anh.
+Grounded correctness = lượt in-scope trả đúng và đủ bằng chứng / toàn bộ lượt in-scope cần trả lời; abstain sai không tính đúng. Unsupported claims / tất cả factual claims, báo counts và denominator. Recall@5 có ít nhất một source đích trong 5 kết quả, tách stale/conflicts. Required-handoff recall theo case bắt buộc, riêng yêu cầu trực tiếp và manual takeover tests báo riêng.
 
-Mỗi case cần fixture cụ thể, customer/tenant scope, input, allowed source IDs, expected behavior, forbidden behavior, applicable channel và severity. Các seed hiện mô tả test scenario, không phải inbound event payload để gửi trực tiếp đến provider. Không dùng số điện thoại hoặc ticket thật làm fixture.
+Containment chỉ case resolve không reopen sau 24h, không xem user bỏ đi là success. Latency tách channel transport delay, durable ACK, queue, retrieval/model/tool/outbox/provider. Personal coverage gap không biến thành latency=0 hoặc uptime healthy. Mocks load target 10 inbound/s ×10 phút, 50 conversations: **không chạy traffic này vào Zalo account thật**. Cost gồm model/channel/infra, unknown khác 0.
 
-### Định nghĩa metric
-
-- Grounded correctness = số lượt in-scope có câu trả lời chính xác và mọi claim quan trọng được nguồn cho phép hỗ trợ / tổng lượt in-scope phải trả lời. Không tính abstain sai thành câu đúng.
-- Unsupported-claim rate = số factual claims không được bằng chứng hợp lệ hỗ trợ / tổng factual claims. Báo cả số lỗi và mẫu số, không chỉ phần trăm.
-- Recall@5 = tỷ lệ câu retrieval có ít nhất một source đích trong top 5; dùng corpus có nhãn, tách source conflict/stale.
-- Required handoff recall = số case bắt buộc chuyển người được chuyển đúng / tất cả case bắt buộc; đo riêng yêu cầu trực tiếp gặp người.
-- Reopen/containment = tính trên case đã resolve, quan sát 24 giờ trước chốt; không tính user bỏ đi là resolve.
-- Latency = đo ACK, queue wait, retrieval, LLM, tool, outbox wait và provider delivery riêng. Response p95 không tính chỉ thời gian một HTTP endpoint.
-- Cost per resolved case = hạ tầng phân bổ + model/embedding + channel + storage/egress theo case; thông tin rate chưa có ghi unknown, không tự coi bằng 0.
-
-## 3. Hard gates trước AUTO_LOW_RISK
+## 3. Hard release gates
 
 | Gate | Điều kiện |
 |---|---|
-| Q01 — Nguồn và scope | SB-01 được duyệt; SB-00 đã đối chiếu hoặc owner ghi chấp nhận rõ giới hạn nguồn; dữ liệu được quyền xử lý |
-| Q02 — Account/policy | Cả Zalo và WhatsApp có capability record, policy/version và sandbox evidence; AI-use-case/terms, templates, consent, rate card được review trước gửi thật |
-| Q03 — Identity/ACL | 100% deterministic tenant/customer isolation tests pass; zero leak và zero unauthorized tool action trong security suite |
-| Q04 — Chất lượng | ≥200 eval cases; grounded correctness ≥90%; unsupported claims ≤2%; Recall@5 ≥90%; 50 mẫu được reviewer độc lập kiểm |
-| Q05 — Chuyển người | Required handoff ≥95%; yêu cầu trực tiếp gặp người và takeover-race suite 100%; không tự resume; đường liên hệ nhân viên hoạt động |
-| Q06 — Reliability | Duplicate 100 lần không tăng processing intent/action; crash-recovery và unknown-send tests pass; không ACK mất dữ liệu |
-| Q07 — Tải/độ trễ | Tải thử đề xuất 10 inbound/s trong 10 phút, 50 conversation concurrent; ACK p95 ≤1s, text response p95 ≤10s khi dependencies khỏe; báo riêng bottleneck/quota |
-| Q08 — Privacy | Correction, TTL, deletion, replay suppression và restore suppression pass; không secret/PII trong public repo/log/trace; retention được owner duyệt |
-| Q09 — Vận hành | Alerts, on-call owner, cost cap, per-channel kill switch, staging/production isolation và backup restore có evidence |
-| Q10 — Rollout | Chủ dự án sign-off; staff dùng được console; chỉ cohort đủ điều kiện; rollback thử thành công |
+| Q01 Scope/nguồn | Zalo personal đã xác nhận; business/KB/consent được owner duyệt; SB-00 đối chiếu hoặc owner ghi chấp nhận proposal độc lập |
+| Q02 Channel readiness | SB-27/07 personal version/license/capability/account-risk/terms review và controlled-test evidence; WhatsApp policy/rates/template/terms/version riêng. Không coi owner approval là platform approval |
+| Q03 Scope isolation | 100% deterministic cross-tenant/customer/binding tests pass; zero leak/unauthorized tool action; private personal threads không persisted/LLM/embeddings/logs |
+| Q04 Answer quality | ≥200 cases, ≥90% grounded correctness, ≤2% unsupported claims, ≥90% Recall@5, 50 human-reviewed samples |
+| Q05 Human control | ≥95% required handoff; direct request/takeover race 100%. Personal self visibility kiểm mobile/PC/Web theo cách dùng; chưa chắc thì chặn AUTO song song, không tự resume reconnect |
+| Q06 Reliability/coverage | Duplicate 100 lần không thêm action; durable DB→queue/spool recovery; stale epochs denied; unknown-send không retry mù; disconnected gap hiển thị và auto pause, không hứa no-loss trước bridge persist |
+| Q07 Latency/tải | Mocks backend ingest p95≤1s, text response p95≤10s khi dependencies khỏe; report bottlenecks, real-account kiểm có kiểm soát không stress/flood |
+| Q08 Privacy/secrets | QR owner-only TTL/no-store, encrypted session/spool, private thread default deny, purge/replay/restore suppression tests; no secrets/PII public repo/log |
+| Q09 Operations | Account-health/lease/spool/gap/restriction alerts, on-call/support, cost caps, per-binding kill switch, staging separation, restore evidence |
+| Q10 Rollout | Owner explicit enable, approved cohort/intent, rollback rehearsal; session restricted/challenge/unresolved gap/self visibility unknown đều block auto |
 
-Không dùng trung bình để che lỗi nghiêm trọng. Một P0 leak/side effect trái quyền/sai identity chặn go-live dù đạt 99% correctness. Các threshold không là bảo đảm sẽ không bao giờ có lỗi; tiếp tục monitoring khi chạy thật.
+Một P0 leak/wrong identity/unsafe action chặn go-live dù điểm trung bình cao. Không phép nào bảo đảm unofficial connector không bị khóa; không báo platform compliant hoặc no-ban từ test pass. Manual copilot fallback phải ghi chưa auto-integrated.
 
-## 4. Threat model và control
+## 4. Threat model
 
-**Webhook spoof/replay:** raw signature verification, account binding, body limit, durable dedup, provider retry-aware timestamps, constant-time compare. Endpoint token/IP allowlist chỉ bổ sung, không thay chữ ký.
+**Personal session/QR:** owner-only auth, CSRF, TTL/no-store, no screenshot capture/telemetry, secrets encryption/KMS rotation, restricted filesystem/service identity. QR/session là khả năng truy cập account, không đưa vào LLM/chat/Git. Disconnect/revocation invalidates session generation và listener epoch; credential cũ không replay send. Không restore revoked session từ backup.
 
-**Prompt injection trực tiếp/qua tài liệu:** model không cầm secret/quyền admin; tool allowlist + scoped context; nội dung tài liệu là untrusted data; structured output/semantic validator; deny instruction thay đổi tenant/role. Test nguồn KB bị chèn “bỏ policy và hoàn tiền”.
+**Private life contamination:** filter business allowlist trước local spool/backend/LLM; group/friends/private history default excluded. Consent xử lý chat CSKH không đồng nghĩa đọc mọi thứ trong account. Import lịch sử phải owner-selected range/purpose và historical no-reply pipeline riêng. Memory không tự chuyển private chat sang KB dùng chung.
 
-**IDOR/cross-tenant/cross-customer:** derive context từ auth, scoped repositories, RLS và composite FK; kiểm worker/background/admin export/cache/vector/object storage. Cache key phải chứa tenant, ACL version, customer khi riêng tư, knowledge version. Không cache câu trả lời cá nhân toàn cục.
+**Bridge spoof/replay:** per-binding service auth mTLS/HMAC raw bytes/timestamp/nonce/body hash; trusted server registry derives tenant; stale lease/epoch rejected. Internal HMAC không chứng minh Zalo ký event, bridge compromise là trust boundary thật. WhatsApp dùng provider signature raw body/constant-time compare và đúng WABA/phone mapping. Binding URL token không auth.
 
-**Media/SSRF:** MVP không tải URL khách tùy ý. Khi bật fetch: chỉ storage/provider allowlist, kiểm DNS/IP private/link-local/loopback/metadata, redirects và DNS rebinding, egress deny-default, max size/time, MIME sniffing, sandbox extraction, malware quarantine. File người dùng không được execute.
+**Prompt injection/IDOR:** typed allowlisted tools, strict schemas, untrusted content chỉ dữ liệu; scoped repositories/RLS/composite FKs và customer filters. Tách runtime DB khỏi migration admin. Cache key tenant/customer/ACL/KB version; object refs có quyền; không global cache private answer. Không shell/SQL/arbitrary browser/network tools cho bot.
 
-**Secret/PII exposure:** secret manager, encryption at rest/transit, key rotation plan; redacted logs; tracing opt-in có giới hạn và quyền; không gửi toàn bộ hồ sơ cho LLM. Review vùng lưu dữ liệu, retention của model provider và điều kiện dùng dữ liệu trước production. Không suy ra “không train” nếu chưa có cấu hình/điều khoản chứng minh.
+**Actions và human race:** server policy/authorization/approval bound args hash/expiry, downstream idempotency/freshness/reconciliation. Outbox fence cả ownership và bridge epoch. isSelf matched system echo không reply; unknown self activity takeover bảo thủ; không ignore all self messages. In-flight có thể không hủy; UI phải phản ánh.
 
-**Action abuse:** deterministic authorization, limit/approval/hash binding, transaction intent trước effect, downstream idempotency/reconciliation, fresh source recheck; không dùng model score để vượt quyền. User confirmation không thay staff approval với thao tác rủi ro.
+**Media/SSRF:** no arbitrary media fetch ở MVP; về sau allowlist, block private/loopback/link-local/metadata, kiểm redirect/DNS rebind/size/MIME/time, malware quarantine/sandbox extraction. Không execute file khách. Images chưa đọc không được LLM bịa đã thấy.
 
-**Human/bot race:** cùng ownership protocol và fencing version, kiểm tra ở sender; event echo không kích hoạt chatbot; hủy pending intents, in-flight được đánh dấu và giải thích giới hạn.
+**Memory resurrection:** allowlist keys/provenance/sensitive denylist, KB publish human review, deletion generation/tombstones xuyên summary/vector/cache/jobs/**bridge spool**/exports/restore. Consent revoke hủy pending follow-up. Legal hold/retention cần quyết định owner có căn cứ, không mặc định vĩnh viễn.
 
-**Memory poisoning và resurrection:** allowlist key, provenance, sensitive-field denylist, review trước KB publish, tombstone/deletion generation, cache invalidation và restore suppression. Consent revoke cũng hủy follow-up đang chờ.
+**Account/financial abuse:** per-account bounded queue/LLM/tool budgets/circuit breaker, no spam/friend scraping/bulk/group, no anti-bot evasion/CAPTCHA bypass/proxy or account rotation to evade restrictions. Low send rate giảm tải nội bộ, không hứa account safety. Unknown fee không 0; model fallback phải được duyệt xử lý dữ liệu.
 
-**Budget denial-of-wallet:** per-account inbound/LLM/tool quotas, token cap, debounce, finite retries, circuit breaker, queue limits và cost reservations. Không trả quá nhiều tin “đang xử lý” hoặc vòng bot echo.
+## 5. Chaos/race scenarios bắt buộc
 
-## 5. Kịch bản lỗi bắt buộc
+Bridge chết trước event persist → coverage gap có thể mất tin, không báo recovered nếu không proof. Sau spool persist trước internal ACK → retry dedup. DB commit trước queue enqueue → sweeper recover. Spool full/offline dài → health degraded, auto pause và alert. Duplicate/stale lease làm hai bridge cùng chạy → chỉ epoch hợp lệ được server/sender chấp nhận, process lỗi dừng. Owner mở Zalo Web → session conflict, không reconnect war.
 
-Tắt Redis sau durable ACK → dispatcher phục hồi không mất event. Kill worker sau tool success trước persist → reconcile, không write lại mù. Provider nhận send rồi ngắt mạng → unknown → không tạo duplicate. Status delivered đến trước accepted update → không lùi trạng thái. LLM timeout khi nhân viên takeover → không gửi câu trả lời muộn. OA token refresh cùng lúc ở hai worker → một kết quả hợp lệ không bị token cũ đè.
+Manual mobile/PC message trong lúc LLM chạy → takeover khi observed; observation unsupported → production gate ngăn auto mode đó. Outbound accepted rồi timeout → unknown, no blind resend. Delivery status đến ngược thứ tự → không lùi. Account challenge/restriction → pause, owner official recovery, không tự vượt.
 
-Thu hồi KB trong lúc câu trả lời đang soạn → validator/sender policy yêu cầu regenerate hoặc handoff nếu nguồn không còn hợp lệ. Khách yêu cầu xóa trong lúc memory job chạy → tombstone chặn commit dữ liệu cũ. Cùng tên khách ở hai tenant/cùng tenant khác customer → không lộ dữ liệu. Đổi địa chỉ/giá từ nguồn trực tiếp sau approval → freshness check bắt buộc đánh giá lại.
+KB revoke khi đang draft → validator loại nguồn/regenerate/handoff. Delete request khi memory/spool job đang chạy → tombstone chặn resurrection. Consent/thread allowlist revoke khi queued → chặn dispatch và purge nội dung theo policy. Restore offline old inbox → historical no-send, suppression trước reconnect.
 
-## 6. CI và release workflow
+## 6. CI/release/observability
 
-Sau SB-02/23, PR chạy lint/typecheck, unit, contract, schema/migration tests, secret/dependency scan và build. Critical path thêm integration/security/eval subset. Scheduled/full release pipeline chạy full eval, E2E, load/chaos và restore test theo kế hoạch được owner duyệt; không tự lập automation bên ngoài chỉ từ tài liệu này.
+PR: lint/typecheck, unit/contracts/schema/migration/security scans/build sau scaffold thật. Release: integration/security/full eval/E2E/UAT/load mocks/restore drill. Mọi skipped integration ghi rõ không pass. Pin commit/image/model/prompt/policy/KB/connector versions; migration job riêng có lock, expand/contract; staging→QA→owner→inactive deploy→canary. Không tự paid provision hoặc production SQL.
 
-Deployment build image immutable với commit SHA; schema migration có job duy nhất và lock; expand/contract cho thay đổi phá vỡ tương thích. Staging → QA report → owner review → deploy inactive → smoke → canary mode. Không tự sửa production DB từ console SQL của coding agent. Branch protection/review phải được owner cấu hình khi bắt đầu implementation; bộ plan này chưa thay setting repo.
+Dashboards: failed service auth/signature, session heartbeat/epoch, listener conflict, account restriction, private-event drops (counts only), spool depth/age/full, ingestion gap duration, inbox lag/duplicates/queue age, retrieval/source rejections, model/tool latency/tokens, handoff age, outbox unknown, purge lag, costs. Alert không raw message/QR/session. Soft cap 80% là tuning proposal, hard cap owner-set.
 
-## 7. Observability
-
-Metrics: webhook_verify_fail, inbox_dispatch_lag, duplicate_events, queue_age, model/token/tool latency, retrieval_no_result, rejected_sources, handoff_pending_age, outbox_unknown/failed, provider_429, refresh_fail, purge_lag, budget_spend, policy_denied. Dashboard theo tenant/channel nhưng quyền truy cập tối thiểu.
-
-Alert đề xuất: backlog tăng liên tục; credential revoked; bất kỳ suspected leak/action trái quyền; outbox unknown; handoff quá SLA; cost vượt 80%/100% cap; failure rate tăng so baseline. Ngưỡng vận hành cụ thể chốt từ load/pilot, không coi các default là SLA hợp đồng. Alert chỉ chứa ID truy vết, không raw transcript.
-
-## 8. Bằng chứng bàn giao release
-
-Commit/image SHA, migration version, model/prompt/policy/KB versions, test reports có command/log và skipped rõ, provider capability records, secret scan, 50-case human review, UAT record, backup restore log, purge/replay evidence, rates/consent/terms checklist, rollback owner và open risk register. Dữ liệu thật/evidence nhạy cảm lưu ngoài public repo; repo chỉ link access-controlled hoặc báo cáo đã khử dữ liệu.
+Release evidence: real executed commands and reports, fixtures sanitized, version records, 50-case human review, owner account-risk/terms/privacy sign-off, per-client self visibility, known gaps, rate cards, kill switch, purge/restore/rollback, open blockers. Giữ nhạy cảm ngoài public repo. `planning/validation-report.md` là báo cáo **baseline cũ** cho assets khi đó, không chứng nhận revision personal hay runtime.

@@ -1,93 +1,67 @@
-# 09 — Checklist chủ dự án, vận hành và chi phí
+# 09 — Checklist và runbook: Zalo cá nhân
 
-## 1. Những gì đã và chưa làm ở baseline
+## Trạng thái
 
-Đã lập bộ đặc tả, task DAG, prompt coding agents, schema và eval seed. **Chưa** có code runtime, tài khoản Zalo/WhatsApp được kết nối, khóa model, CRM thật, hạ tầng provisioned, QA application hoặc tin nhắn khách đã gửi. Nội dung hai clip còn chưa đối chiếu. Không có task background/automation nào tự chạy từ repo này.
+Chỉ plan/spec, chưa runtime/credentials/deployment. Chủ dự án đã xác nhận personal Zalo: **không hỏi OA ID/App/OA token nữa**. WhatsApp giữ Cloud API giả định. Không có automation/agent được tự khởi chạy bởi tài liệu. Hai clip vẫn thiếu nội dung cho SB-00.
 
-Repo public: không đưa input nhạy cảm vào Git. Checklist ghi trạng thái và owner; file/tài khoản/secret thật nhập qua kênh riêng được cấp quyền.
+## Input registry
 
-## 2. Input registry
+| Đầu vào | Việc cần làm / gate |
+|---|---|
+| Account Zalo cá nhân do chủ dự án sở hữu | Owner chủ động cho phép controlled test, xem unofficial/account-risk/terms; tự scan QR, không gửi password/OTP/cookie qua chat/Git |
+| Máy/server bridge và quyền vận hành | Long-running Node/container, secret storage, encrypted volume/spool, TLS/internal service identity, owner shutdown/revoke |
+| Các thread CSKH được xử lý | Owner chọn allowlist/purpose; mặc định nhóm/bạn bè/gia đình/history không ingest; không dump toàn bộ danh bạ |
+| Cách chủ tài khoản dùng mobile/PC/Web | SB-27 test listener collision/self-event visibility; chưa biết thì không auto ngoài console; đây là capability cần test, không hỏi lại loại account |
+| Ngành hàng/KB/policy/CRM | Owner duyệt nguồn/hiệu lực; mock synthetic khi thiếu, không bịa giá/order thật |
+| Meta app/WABA/phone/scopes | Official WhatsApp test/live setup; không suy từ personal Zalo sang WhatsApp Web |
+| Rates/budget/model/privacy | WhatsApp rate card hiện hành; model/data processing/retention/region; per-account budget; unknown cost không 0 |
+| Support staffing/giờ làm/SLA | Handoff thực sự có người nhận, outside-hours route và manual fallback |
+| Retention/consent/deletion | Quyền xử lý chat CSKH và dữ liệu gửi model; không đồng ý xử lý mọi tin riêng chỉ vì owner QR login |
+| Video/transcript hợp lệ | SB-00 đối chiếu; không ngăn module độc lập nhưng source caveat còn giữ |
 
-| Input cần chủ dự án chốt | Dùng cho | Có thể làm gì khi chưa có | Gate bị chặn |
-|---|---|---|---|
-| Hai video hoặc transcript có quyền sử dụng | SB-00 đối chiếu thiết kế với clip | Tiếp tục proposal độc lập, giữ source caveat | Không tuyên bố bám sát clip; scope sign-off cần ghi giới hạn |
-| Ngành hàng, sản phẩm, use cases ưu tiên | SB-01 dataset và tools | Cửa hàng sản phẩm thông thường synthetic | UAT nghiệp vụ và policy use-case |
-| FAQ/chính sách/version/owner tài liệu | SB-10/11 | Synthetic KB có ghi giả | Trả lời khách thật |
-| CRM/order backend/API và read scopes | SB-14 | Mock adapter, không bịa dữ liệu thật | Nghiệm thu tra cứu đơn thật |
-| OA, Zalo App, quyền/entitlement, callback và secret | SB-07 | Mock verify/normalize/send fixtures | Sandbox/live Zalo |
-| Meta app/WABA/số, webhook, token/scopes | SB-08 | Mock adapter + fake clock | Sandbox/live WhatsApp |
-| Template và consent flow cho follow-up | SB-09 | Không gửi chủ động ngoài khung | Follow-up production |
-| Rate card hiện hành và budget theo account/thị trường | SB-09/20/25 | Unknown-cost state, OFF/SHADOW | Tự gửi thật có chi phí |
-| Provider/model, processing/retention/data region | SB-15 | Fake model/local fixtures | Dữ liệu khách đến model thật |
-| Nhân viên nhận handoff, giờ làm, SLA, liên hệ ngoài giờ | SB-17/24 | Mock operator/synthetic SLA | Khách thật yêu cầu người |
-| Privacy notice, mục đích xử lý, retention, xóa/export và legal review | SB-13/25 | Dữ liệu tổng hợp | Lưu trữ customer memory thật |
-| Hosting/domain/TLS/budget/quyền deploy | SB-23 | Docker/CI/templates local | Deploy staging/production |
+## Setup local và controlled account
 
-Không hỏi lại thông tin đã được ghi trong Decision Record. Lead dùng registry để chia phần độc lập, thay vì bắt toàn bộ đội chờ một credential.
+Local mặc định mock, personal enabled=false, auto OFF; DB runtime least privilege, secret refs, synthetic KB/order/thread. Pin versions/lockfile; lint/typecheck/contracts/build khi scaffold có thật. Personal bridge không live login từ CI. Auth owner/admin bảo vệ QR screen, no-store/TTL và logs không secret.
 
-## 3. Setup checklist theo thứ tự
+SB-27 review upstream/dependencies/risk trước real QR; chủ account tự scan đúng màn hình do mình kiểm soát. Chọn một account được phép và recipients đồng ý; không tự động yêu cầu tạo tài khoản giả hoặc chuyển hàng loạt account. Người dùng vẫn giữ quyền tắt bridge/revoke session. Không scale nhiều listener cùng account; test mới gây session collision phải được phối hợp với owner.
 
-### Local — Operations + Platform
+Sau login verify đúng account UID/binding, thread allowlist, own-message observation, actual receive/send IDs, revoke, network/process errors, gap reporting. Không gọi đây là sandbox do Zalo cấp. Không chạy backend stress-test 10 msg/s vào Zalo thật; toàn bộ load/chaos dùng mocks trừ vài kiểm chứng account được duyệt.
 
-Scaffold toolchain có pin versions, scripts và lockfile; dựng DB/Redis/object storage; migrate bằng admin job riêng; tạo synthetic tenant/users/KB/order fixtures. Runtime dùng DB role ít quyền. Model/channel/CRM mặc định mock. Lint/typecheck/unit/contracts/build chạy được từ checkout sạch. Không có `.env` thật trong commit.
+WhatsApp staging riêng với test number/recipient/template, official webhook signature/capability/rates. Chưa có credentials thì mock-only chứ không skipped=passed.
 
-### Staging — Channels + Operations
+## Rollout
 
-Tạo môi trường độc lập với production; owner cấp account test và budget. Cấu hình domain/TLS, webhook verification và binding mapping. Cấp secret least privilege qua secret manager; rotation thử. Test nhận/gửi/trạng thái thực trên cả hai kênh; giữ fixtures đã loại định danh. Không công khai test endpoint vô hạn hoặc dùng người nhận không đồng ý thử.
+OFF/SHADOW trước; COPILOT do nhân viên duyệt nhưng **nếu dùng personal bridge vẫn có account risk**. Manual copilot không dùng bridge: người tự cung cấp đoạn chat cần thiết, xem draft/source, tự gửi app chính thức; không claim auto-sync.
 
-### Knowledge — Memory + business owner
+AUTO_LOW_RISK chỉ sau QA/account risk/terms/privacy/capability sign-off, thread+intent allowlist và owner explicit enable. Gap chưa đối soát, self events không quan sát chắc trong cách dùng nhiều client, expired session, account challenge/restriction hoặc stale fencing epoch đều chặn auto. Reconnect không tự resume. Canary 5%→25%→100% hội thoại **đủ điều kiện** là đề xuất, không lịch tự chạy hoặc 100% mọi hoạt động account.
 
-Lập catalog tài liệu có owner/effective date; loại tài liệu nội bộ không cần cho CSKH; upload/quarantine/extract/review; chạy retrieval eval. Gắn nguồn giá/đơn hàng hiện tại vào tools, không KB snapshot. Review câu trả lời và giọng điệu tiếng Việt trên ít nhất 50 mẫu.
+Kill switch per global/tenant/binding, kiểm cả sender và bridge. Pending cancel, in-flight không hứa thu hồi. Khi disconnect/revoke: fence epoch, stop listener, revoke bridge identity, purge QR/session/cached credential, chặn queued sends. Dữ liệu CSKH lưu theo retention/verification, không xóa audit cần thiết tùy tiện. Owner acceptance không là Zalo chấp thuận hoặc cam kết no-ban.
 
-### Copilot — Console + support lead
+## Chi phí
 
-Nhân viên login, nhận ca, xem source/draft, sửa và gửi bằng outbox. Diễn tập yêu cầu chuyển người, ca ngoài giờ, blocked recipient, expired template, lỗi tool và token revoke. Tất cả tin nhắn ở mode COPILOT phải được nhân viên duyệt; UI không tự gửi vì LLM tự đánh giá confidence cao.
+Total = infrastructure + model tokens + embeddings/rerank + storage/backup/egress/observability + verified channel/BSP/tax costs nếu có. Personal không kế thừa biểu phí OA nhưng không suy mọi chi phí=0. Rate unavailable=unknown; budget reservation và actual reconciliation tách. Soft cap 80%/hard cap theo owner approve; không chuyển model chưa được duyệt hoặc giảm safety để tiết kiệm.
 
-## 4. Rollout có kiểm soát
+Input: turns/segments/tokens/tools/cases/KB changes, market, rate effective dates/currency, hardware and support capacity. Policy limits do platform và app budget khác nhau; tốc độ chậm không bảo đảm tránh khóa. Không thêm anti-detection/proxy rotation/account farming để bảo vệ doanh thu.
 
-Bước 1 OFF/SHADOW: ingest thật chỉ khi có quyền xử lý, chạy đánh giá không gửi tự động. Bước 2 COPILOT: người duyệt tất cả. Bước 3 AUTO_LOW_RISK cho allowlisted intent trên một tenant và một kênh, cohort nhỏ đã chốt. Bước 4 mở kênh thứ hai khi vượt cùng gate. Bước 5 tăng cohort từ 5% → 25% → 100% các hội thoại **đủ điều kiện**, không phải 100% mọi use case.
+## Sự cố và phản ứng
 
-Các tỷ lệ là cách canary đề xuất, không phải lịch tự động. Mỗi lần tăng cần đủ số mẫu, không có P0, review quality/cost/reopen và support capacity; owner ghi quyết định. Action rủi ro, identity chưa xác minh, knowledge conflict hoặc ngoài policy luôn ở human flow.
+| Sự cố | Phản ứng |
+|---|---|
+| Account cảnh báo/challenge/restricted | Pause bridge/send, báo owner; dùng quy trình chính thức hoặc manual copilot, không né xác thực/chặn |
+| Owner mở Zalo Web làm listener dừng | Mark session_conflict/coverage gap, pause auto, phối hợp owner; không reconnect loop giành phiên |
+| Session expired/revoked | Fence generation/epoch, stop sends, owner QR lại hợp lệ; không log cookie hoặc tự reset state |
+| Mobile/PC manual reply không xuất hiện | Disable AUTO cho use mode đó; manual takeover trước gửi, kiểm capability, không hứa bot biết hết |
+| Stale lease/2 listener | Reject old epoch ingest/send, stop instance lỗi; active/passive recovery có kiểm soát |
+| DB/queue down | Encrypted bounded spool/durable inbox; metrics/gap, recover dedup; spool full báo lỗi không âm thầm mất |
+| Listener offline/gap | Đối soát capability/history nếu có; thiếu evidence giữ gap, no auto-reply historical messages |
+| Outbox unknown | Không retry mù; đối soát IDs/status/manual, audit kết quả |
+| KB sai hoặc privacy leak | OFF affected intents/account; revoke nguồn/credentials khi cần; minimal audit, incident owner; no transcripts trong alert |
+| Delete/purge lỗi | Tombstone chặn đọc ngay; retry purge trong DB/vector/cache/spool/jobs/objects; restore suppression |
+| Model outage/cost cap | Bounded fallback approved hoặc draft/handoff; không bịa câu trả lời/source |
+| Deploy lỗi | Auto OFF, rollback compatible image/config; không reverse migration phá dữ liệu |
 
-Kill switch theo global/tenant/channel và loại action. OFF chặn sender lập tức cho intents chưa dispatch; tiếp tục lưu inbound và cảnh báo người vận hành nếu còn an toàn. Tin đã dispatch có thể không thu hồi được. Không tắt ingress chỉ để giảm lỗi và làm mất hội thoại.
+## Restore và release evidence
 
-## 5. Mô hình chi phí — không phải báo giá
+RPO≤24h/RTO≤4h là mục tiêu pilot chưa đo. Backup DB/objects/spool cần thiết mã hóa, retention/key recovery tách quyền. Restore cô lập, sender/listener OFF; áp deletion suppression trước connect, không replay send backlog hàng loạt. Không khôi phục session đã revoked từ backup; owner reauthorize khi cần.
 
-```text
-Monthly total = fixed infrastructure
-              + LLM input/output usage * effective token rates
-              + embeddings/re-embeddings + optional reranker
-              + delivered channel messages by category/market/rate_version
-              + BSP/service fees if used
-              + storage/backup/egress/observability
-              + taxes/FX where applicable
-```
-
-Input worksheet cần có: active customers, inbound turns/tháng, outbound segments/turn, token in/out/turn, tools/turn, KB size/change rate, % handoff, market distribution, provider minimum plans và approved spend cap. Không nhầm 1 inbound = 1 billable outbound; split message/retry/notification có thể tăng count.
-
-Rate snapshot lưu nguồn, effective_at, currency, market/category, tier/allowance nếu có, checked_by; không suy ra mọi service message free từ cửa sổ 24h. Estimate lúc enqueue cần reservation atomic; actual khi có delivery/billing evidence thì đối soát và giải phóng/điều chỉnh reservation. Trạng thái unknown giữ dự phòng hợp lý đến khi đối soát, không xóa chi phí vì chưa thấy delivered event.
-
-Đặt soft cap cảnh báo ở 80% và hard cap theo budget được duyệt. Quá cap: dừng auto/giảm công việc tùy chọn, tạo draft/handoff; không chuyển sang model rẻ chưa được duyệt xử lý dữ liệu. Đây là policy đề xuất để owner chốt, không phát sinh mua dịch vụ trong phiên lập plan.
-
-## 6. Runbook sự cố
-
-| Sự cố | Hành động đầu | Kiểm tra / phục hồi |
-|---|---|---|
-| Nghi lộ dữ liệu hoặc tool trái quyền | Tắt auto/action của phạm vi ảnh hưởng; giữ audit tối thiểu | Xác định tenant/customer/run, khóa credential cần thiết, incident owner và privacy response; không gửi transcript qua alert |
-| Zalo/Meta token revoked | Dừng sender account đó, cảnh báo owner | Reauthorize đúng app/OA/WABA, test sandbox/controlled send; không spam refresh |
-| Queue down / backlog tăng | Giữ durable receipt, báo delay, giảm optional jobs | Khôi phục queue, dispatcher sweeper/replay có dedup; không purge inbox chưa xử lý |
-| Provider 429/5xx | Per-account backoff/circuit breaker | Theo Retry-After/status, không retry storm; kiểm quota/billing |
-| Outbound unknown | Không retry mù | Đối soát ID/status nếu có, nhân viên kiểm khi không xác định; đánh dấu kết quả và audit |
-| KB sai/thu hồi nguồn | Revoke version, dừng auto intent liên quan | Invalidate cache/context, publish bản sửa đã review + regression; chủ CSKH quyết định xử lý khách bị ảnh hưởng |
-| Bot trả sau takeover | OFF bot channel/tenant theo impact | So ownership_version/leases/send timestamps, fix race và test trước bật lại |
-| Model outage/cost spike | Circuit breaker, giữ draft/handoff | Kiểm budget/provider; fallback chỉ model đã được duyệt và vượt eval |
-| Xóa dữ liệu chưa hoàn tất | Hạn chế đọc resource ngay bằng tombstone | Retry purge có audit; kiểm vector/cache/jobs/object/backup suppression |
-| Deploy lỗi | OFF auto và rollback image/config | Chọn version tương thích schema, không reverse migration phá dữ liệu; restore chỉ theo runbook đã thử |
-
-## 7. Backup/restore
-
-Mục tiêu kỹ thuật pilot đề xuất RPO ≤24 giờ, RTO ≤4 giờ; phải đo trong restore drill và chỉnh theo yêu cầu thực tế, không coi đã đạt. Backup DB và objects có lịch/retention/mã hóa; key recovery được phân quyền. Restore vào môi trường cô lập; áp tombstones/suppression ledger và kiểm tenant isolation trước nối network/providers. Disable mọi sender trong quá trình restore để không replay gửi hàng loạt.
-
-## 8. Danh sách ra quyết định trước production
-
-Chủ dự án/support lead ký scope, dữ liệu, staffing và mode. Channels xác nhận policy/rate card/token/terms hiện hành cho account. QA ký báo cáo hard gates; Operations chứng minh kill switch/restore/cost cap; privacy reviewer duyệt retention và xử lý dữ liệu qua nhà cung cấp. Lead ghi phạm vi nào vẫn MOCK_ONLY/BLOCKED. Không báo sản phẩm hoàn thiện nếu tài khoản thật, nguồn nghiệp vụ hoặc tuyến chuyển người chưa hoạt động.
+Bàn giao: commit/image/model/prompt/policy/KB versions; real command/test evidence; personal capability+account risk+terms record, QR/session redaction, self-event/gap tests, WhatsApp verification/rates, purge/restore/kill switch/UAT và support owner. Dữ liệu thật không ở repo public. Chưa đạt thì báo cụ thể MOCK_ONLY/REAL_ACCOUNT_BLOCKED, không production-ready.
