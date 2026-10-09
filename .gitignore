@@ -1,0 +1,33 @@
+# Secrets and private business/customer data
+.env
+.env.*
+!.env.example
+secrets/
+private-data/
+customer-data/
+transcripts/
+*.pem
+*.key
+
+# Dependencies and generated application output
+node_modules/
+.pnpm-store/
+.next/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+.turbo/
+
+# Local infrastructure and diagnostics
+.data/
+volumes/
+*.log
+*.sqlite
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+
+# Commit only synthetic, reviewed fixtures; never raw provider/CRM exports.
